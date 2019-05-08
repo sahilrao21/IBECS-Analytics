@@ -1,0 +1,212 @@
+
+
+clc;    
+close all; 
+imtool close all;  
+clear;  
+workspace; %read online these are good practice to have at the start
+fontSize = 16;
+abridge = 10; %how many frames to cut off from what we're evaluating. use for testing
+
+
+
+movieFullFileName = 'testv.avi';
+
+[folder, baseFileName, extentions] = fileparts(movieFullFileName);
+		folder = pwd;   
+		outputFolder = sprintf('imdifframes', folder, baseFileName);
+			mkdir(outputFolder);
+            
+                      
+            
+            
+
+	vidObj = VideoReader(movieFullFileName)
+	nof = vidObj.NumberOfFrames;
+	vH = vidObj.Height;
+	vW = vidObj.Width;
+    
+    %initialize imdif tensor
+    imdif = zeros(vH,vW);
+	% initialize nofw counter = # of frames written
+    nofw = 0;
+	
+    
+	% Prepare a figure to show the images in the upper half of the screen.
+	figure;
+	% 	screenSize = get(0, 'ScreenSize');
+	set(gcf, 'units','normalized','outerposition',[0 0 1 1]);
+	
+    
+	
+	meanGrayLevels = zeros(nof, 1);
+
+	for frame = 2 : nof-abridge
+		% Extract 2 frames: current and previous
+		thisFrame = read(vidObj, frame);
+        frameminus = frame-1;
+        lastFrame = read(vidObj, frameminus);
+		
+		% Display
+		hImage = subplot(2, 2, 1);
+		image(thisFrame);
+		caption = sprintf('Frame %4d of %d.', frame, nof);
+		title(caption, 'FontSize', fontSize);
+		drawnow;
+		
+        
+        
+        
+        %grayImage = thisFrame;	
+
+		% Increment frame count 
+		nofw = nofw + 1;
+		disp(nofw)
+        
+		sigma = 0.5;
+		if frame == 2
+			Background = lastFrame;
+		else
+			% Change background slightly at each frame
+			Background = sigma * Background + (1-sigma)* thisFrame;
+        end
+		
+%  difference  between frames: VERY NOISY
+        differenceImage = thisFrame - lastFrame;
+        
+%difference between frame and adaptive background
+        differenceImage2 = thisFrame - uint8(Background);
+		
+%store things in arrays
+         grayImage = differenceImage;
+         imdif(:,:,nofw) = grayImage;
+         
+         grayImage2 = differenceImage2;
+         imdif2(:,:,nofw) = grayImage2;
+         
+         
+%info on average intensity level of frame
+        meanGrayLevels(frame) = mean(grayImage(:));
+		disp('mean gray levels')
+        disp(meanGrayLevels(frame)) 
+         
+		thresholdLevel = graythresh(grayImage2); % Get threshold.
+		binaryImage = im2bw( grayImage2, thresholdLevel); % Do the binarization
+        imdif3(:,:,nofw) = binaryImage;
+        
+
+        
+		% Plot the Otsu image motion energy and naive motion energy.
+		subplot(2, 2, 2);
+		imshow(binaryImage);
+		title('Threshold processed image difference', 'FontSize', fontSize);
+        
+        subplot(2, 2, 3);
+		image(differenceImage);
+		title('Naive image difference', 'FontSize', fontSize);
+        drawnow;
+     
+        
+        %save all the image difference files in a folder as images
+         imwrite(imdif(:,:,nofw),sprintf('imdifframes/imdiftestnaive%d.png',nofw));
+         imwrite(imdif3(:,:,nofw),sprintf('imdifframes/imdiftestbinary%d.png',nofw));
+         
+         
+%take SVD of every frame
+
+
+    end
+    
+    %actually compute SVD's of average motion energy
+   % **strange issue** when I use the binary date I get nothing for the
+   % individual svd dimensions.  I think the data is too sparse
+    
+    imdifavg = mean(imdif3,3);
+    imdifavgnaive = mean(imdif,3);
+    imwrite(imdifavg,'avgbinary.png');
+    imwrite(imdifavgnaive,'avgnaive.png');
+
+    %I've changed this to the naive approach while I try to figure out why
+    %the binarized method is broken
+	[U,S,V] = svd(imdifavgnaive);
+    %here are the binary resultant matrices in case I figure out how to use
+    %them
+    [U1,S1,V1] = svd(imdifavg);
+
+       
+    % display rank statistics and compression images
+    sigmas = diag(S);
+    figure; plot(log10(sigmas));
+    title('Log scale Singular Values');
+
+    
+    ranks = [100, 10, 2];
+    for i = 1:length(ranks)
+        approx_sigmas = sigmas;
+        %set everything except for the rank I care about to 0.
+        approx_sigmas(ranks(i):end) = 0;
+        
+        ns = length(sigmas);
+        approx_S = S;
+        approx_S(1:ns,1:ns) = diag(approx_sigmas);
+        
+        approx_image = U*approx_S*V';
+        
+        imwrite(approx_image,sprintf('Rank %d image.png',ranks(i)));
+        %I don't understand why this stuff isn't displaying, but guess we
+        %don't really need it anyway...set it to write out to files
+    end
+    
+    %ok, now rather than looking at raw compression, we want to examine the
+    %individual SVD rank images.  So....I think we should set everything to
+    %zero except the one SV we care about
+    top5 = [1,2,3,4,5,10,50,100];
+    for j = 1:length(top5)
+       
+        approx_sigmas2 = sigmas;
+        %circle back to make sure this works
+        approx_sigmas2(1:end ~= top5(j)) = 0;
+     
+        ns = length(sigmas);
+        %kind of a clumsy way of setting up the S matrix with only the rank
+        %on the diagonal that I care about
+        approx_S2 = S;
+        approx_S2(1:ns,1:ns) = diag(approx_sigmas2);
+        
+        approx_image2 = U*approx_S2*V';
+        
+        subplot(4,3,j+1),
+        imshow(approx_image2),
+        title(sprintf('Just Rank %d image',top5(j)));
+    end
+    
+    
+    
+    %testing why this seeeeeeems like it's broken (think not broken, just
+    %too sparse)
+    approx_sigmas_test = sigmas1;
+
+    k = 3;
+    
+    %alt way
+    approx_sigmas_test(1:end ~= k) = 0;
+    %approx_sigmas_test(1:examine) = 0;
+    %approx_sigmas_test(examine+1:end) = 0;
+    
+
+    ns = length(sigmas1);
+    approx_S3 = S1;
+    approx_S3(1:ns,1:ns) = diag(approx_sigmas_test);
+
+    approx_image_test = U1*approx_S3*V1';
+
+    imwrite(approx_image_test,'rank1test.png');
+   %ok this very clearly works and has less background than the other, so I
+   %need to figure out why the loop wont implement it properly. edit: was inputting wrong data. still broken
+    
+    
+	disp('done');
+	
+
+	
+
