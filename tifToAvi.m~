@@ -1,0 +1,40 @@
+%% One by One Tif to AVI
+
+function tifToAvi()
+    d = uigetdir(pwd, 'Select a folder');
+    files = dir(fullfile(d, '*.tif'));
+    % Display the names
+    A = struct2cell(files);
+    
+    sizeOfA = size(A);
+    numberOfTifs = sizeOfA(1,2);
+    
+    video = VideoWriter('concat1.avi','Uncompressed AVI');
+    open(video);
+    for k = 1:numberOfTifs
+        tifInfo = imfinfo(A{1,k});
+        numberOfFrames = numel(tifInfo);
+        for j = 1:numberOfFrames
+            a = imread(A{1,k}, j);
+            writeVideo(video, a);
+        end
+        disp("Done " + k + " / " + numberOfTifs);
+    end
+    close(video);
+end
+
+function tifToAviHelper(tifFile)
+    
+    video = VideoWriter('concat1.avi','Uncompressed AVI');
+    open(video);
+    for k = 1:numberOfTifs
+        tifInfo = imfinfo(A{1,k});
+        numberOfFrames = numel(tifInfo);
+        for j = 1:numberOfFrames
+            a = imread(A{1,k}, j);
+            writeVideo(video, a);
+        end
+        disp("Done " + k + " / " + numberOfTifs);
+    end
+    close(video);
+end
